@@ -1,15 +1,7 @@
-# health-analytics
+# Patient Care Prediction Model
 
-A pipeline for working with a clinical encounter dataset: fill in missing
-values, profile what you were given, look for structure, and find out which
-fields actually predict an outcome.
+A pipeline for taking messy patient data and turning it into insights through a predictive model. The model predicts if it is in the best interest for a patient to get surgery based on factors like salary, BMI, pre-existing conditions, and other important details.
 
-It started as five scripts I wrote while working through a 100,000-row dataset
-of patient encounters. They worked, but each one hardcoded its input path at the
-top, and four of them carried their own copy of the same "is this column
-numeric?" helper. The copies had drifted to three different thresholds, so the
-same column could be numeric in one script and categorical in the next. This is
-the rewrite: one package, one implementation of each decision, and a test suite.
 
 ## About the data
 
@@ -25,10 +17,7 @@ column types, ~3% missingness, one column that is 72% empty, and free text
 sitting inside otherwise numeric fields. Every output shown below came from
 that generator, not from the real data.
 
-The relationships in it are planted and known, which makes it more than a demo.
-`X_signal` drives the outcomes, so a correct importance ranking has to surface
-it. `X30` and `X31` are near-duplicates, so correlation analysis should catch
-them. If a change breaks either, the tests fail.
+
 
 ## Running it
 
