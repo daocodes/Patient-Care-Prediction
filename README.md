@@ -1,23 +1,32 @@
-# Patient Care Prediction Model
+# health-analytics
 
-A pipeline for taking messy patient data and turning it into insights through a predictive model. The model predicts if it is in the best interest for a patient to get surgery based on factors like salary, BMI, pre-existing conditions, and other important details.
+A pipeline for a clinical encounter dataset: fill in missing values, profile
+what you were given, look for structure, and find out which fields actually
+predict an outcome.
 
+The analysis this came out of placed **2nd at the International Big Data Health
+Science Competition**, in the graduate division — I competed as an
+undergraduate.
 
-## About the data
+It began as five scripts I wrote while working through 100,000 patient
+encounters. Each hardcoded its input path, and four carried their own copy of
+the same "is this column numeric?" helper, drifted to three different
+thresholds — so a column could be numeric in one script and categorical in the
+next. This is the rewrite: one package, one implementation of each decision, and
+96 tests.
+
+## The data is not here
 
 **The dataset is confidential patient data and is not in this repository.**
+Nothing under `data/` is tracked, and `.gitignore` blocks data by extension
+rather than by filename, so a new export is ignored by default.
 
-Nothing under `data/` is tracked except its README, and `.gitignore` blocks the
-relevant extensions by pattern rather than by filename, so a new export is
-ignored by default instead of needing to be added to the ignore list first.
-
-So that the pipeline is runnable by anyone, `scripts/generate_sample_data.py`
-produces synthetic data with the same shape and the same awkward parts: mixed
-column types, ~3% missingness, one column that is 72% empty, and free text
-sitting inside otherwise numeric fields. Every output shown below came from
-that generator, not from the real data.
-
-
+So the pipeline stays runnable, `scripts/generate_sample_data.py` produces
+synthetic data with the same shape and the same awkward parts: mixed types, ~3%
+missingness, a column that is 72% empty, and free text inside otherwise numeric
+fields. Every number below comes from that generator. The relationships in it
+are planted — `X_signal` drives the outcomes, `X30`/`X31` are near-duplicates —
+so the tests can assert the pipeline finds them.
 
 ## Running it
 
@@ -25,8 +34,6 @@ that generator, not from the real data.
 pip install -e ".[dev]"
 python scripts/generate_sample_data.py --rows 5000 --output data/sample.csv
 ```
-
-Then any of six subcommands:
 
 ```bash
 health-analytics profile    --input data/sample.csv
@@ -37,9 +44,10 @@ health-analytics correlate  --input data/sample.csv --method spearman
 health-analytics importance --input data/sample.csv --target Y2
 ```
 
-`profile` is the one to start with. It answers the four questions worth asking
-of an unfamiliar table — what is missing, what is redundant, what is skewed,
-and what is effectively constant:
+## Results
+
+`profile` answers the four questions worth asking of an unfamiliar table — what
+is missing, what is redundant, what is skewed, what is effectively constant:
 
 ```
 Dataset: 5,000 rows x 43 columns
@@ -48,12 +56,10 @@ Schema:  34 numeric, 9 categorical, 1 identifier, 5 outcome
 MISSING VALUES (35 columns affected)
   X60_sparse            72.42%
   X24_oxygen_sat         4.28%
-  X23_temperature        4.18%
 
 STRONGEST CORRELATIONS
   Y2                 X_signal            -0.980
   X30                X31                 +0.966
-  Y1                 X_signal            +0.965
 
 SKEWNESS (|skew| >= 1.0, consider a transform)
   X40_skewed              +4.88
@@ -62,138 +68,77 @@ CATEGORICAL DOMINANCE (one value covers >= 90%)
   X56_reminder         'email'   94.1%
 ```
 
-`importance` trains a model on one outcome and ranks the features three ways:
+It finds the planted duplicate pair, the skewed column, and the categorical that
+is 94% one value, without being told what to look for.
+
+`importance` trains a model on one outcome and ranks features three ways, since
+each is wrong in its own direction: gain favours high-cardinality columns,
+permutation splits credit between correlated features, SHAP is slow. A feature
+ranking highly under all three is real signal.
 
 ```
 Target: Y2
 regression | train=4,000 test=1,000
   rmse=0.0680  mae=0.0538  r2=0.9514
 
-Top 5 features:
                   gain  permutation
-feature
 X_signal      1.341694     1.905281
 X30           0.006859     0.000351
 X60_sparse    0.005850     0.000342
 T             0.001734     0.000300
-X3            0.003956     0.000266
 ```
 
-The planted driver comes out on top under both methods, and the gap to second
-place is three orders of magnitude. Pointing the same command at `Y5` — which
-the generator fills with random integers — gives 31% accuracy across three
-classes, which is chance. That is the intended answer, and it is worth more
-than a number that looks good.
+The planted driver comes out on top under both methods, three orders of
+magnitude clear of second place. Pointing the same command at `Y5`, which the
+generator fills with random integers, gives 31% accuracy across three classes —
+chance. That is the correct answer, and worth more than a good-looking number.
 
-## How it is put together
+`impute` fills gaps with KNN for numbers and mode for labels; `validate` then
+checks the output for the ways imputation actually goes wrong — rows dropped,
+columns silently modified, a field left saturated with the placeholder.
 
-Six modules, each doing one thing, with the sequencing kept out of them.
+Results from the real dataset are withheld, since they derive from confidential
+records.
 
-| Module | Responsibility |
-|---|---|
-| `schema.py` | Decide what each column *is*. Everything else defers to this. |
-| `datasets.py` | Read CSV or Excel behind one interface, raise a typed error. |
-| `imputation.py` | Fill gaps: KNN for numbers, mode for labels, fallbacks for both. |
-| `profiling.py` | Text summary of an unfamiliar table. |
-| `eda.py` | Exploratory figures. |
-| `correlation.py` | Pairwise relationships, ranked. |
-| `importance.py` | Train a model, rank features three ways. |
-| `validation.py` | Check an imputed file for the ways imputation goes wrong. |
+## Fixes the rewrite turned up
 
-Three decisions are load-bearing:
+- **Gain importance was reporting zero for every feature.** XGBoost returns
+  positional booster keys (`f0`, `f1`) when feature names are not retained; the
+  original looked them up by column name, matched nothing, and defaulted to
+  `0.0`. The committed output CSV has 51 rows and not one non-zero value.
+  Nothing raised.
+- **Permutation importance was scored on data the model never saw the shape
+  of** — NaN replaced with `-999` after training with NaN intact.
+- **The t-SNE subsample was unseeded**, so the projection changed every run, and
+  the cluster map came out untitled because `plt.title()` after
+  `sns.clustermap()` targets the colour bar's axes.
 
-**Column typing lives in exactly one place.** It was duplicated four times and
-the copies disagreed, which is the bug that motivated the rewrite. A column now
-counts as numeric when at least 90% of its non-null values parse as numbers,
-because real clinical exports put `pending` and `<90` in fields that are
-otherwise numeric, and an all-or-nothing test demotes those columns to
-90,000-category strings.
+## Layout
 
-**Configuration is frozen dataclasses, not module globals.** Every stage takes
-its settings as an argument. That is what makes the stages testable without
-touching a file, and it is why the CLI can expose `--neighbors` and
-`--numeric-threshold` without any stage knowing the CLI exists.
-
-**Estimators sit behind a common interface.** Gain, permutation, and SHAP each
-answer "which features matter" and each is wrong in its own direction — gain
-favours high-cardinality columns, permutation splits credit unpredictably
-between correlated features, SHAP is slow and has a fragile dependency chain.
-They return the same shape, so the three rankings join into one table and can be
-compared. A feature that ranks highly under all three is a real signal; one that
-ranks highly only under gain usually is not.
-
-SHAP is an optional extra for a practical reason: it depends on numba, which
-pins hard against NumPy. It does not import in my current environment, and the
-importance stage reports the other two rankings rather than failing.
-
-## What the rewrite fixed
-
-Consolidating the scripts turned up real bugs, not just style problems.
-
-**Gain importance was silently reporting zero for every feature.** XGBoost's
-booster only keeps feature names in some configurations; trained through the
-scikit-learn wrapper on a DataFrame it does not, and `get_score()` returns
-positional keys (`f0`, `f1`) instead. The original looked those up by column
-name, matched nothing, and defaulted to `0.0`. The committed output CSV has 51
-rows and not one non-zero gain value. Nothing raised. There are now regression
-tests covering both the name mapping and the end-to-end result.
-
-**Permutation importance was scored on data the model had never seen the shape
-of.** The model trains with NaN intact, since XGBoost learns a default branch
-direction for missing values. The original then filled NaN with `-999` before
-measuring permutation importance, so what it measured for any column with gaps
-was largely the cost of that substitution. NaN is now passed through.
-
-**The cluster map was untitled.** `plt.title()` after `sns.clustermap()` targets
-whatever axes happen to be current, which is the colour bar. Figures are now
-written through a context manager that owns the figure it saves and closes it on
-the way out, including when the plotting code raises.
-
-**The t-SNE sample was unseeded**, so the projection changed on every run.
-
-**Pair deduplication was O(n²) in Python.** The original built a sorted tuple
-per row with `DataFrame.apply` to drop mirrored pairs — about 4,900 calls for 70
-columns. A NumPy triangular mask does it in one operation.
-
-Smaller ones: an `IndexError` waiting on the first fully-empty categorical
-column, bare `except:` clauses swallowing everything including `KeyboardInterrupt`,
-and `use_label_encoder=False`, which was removed in XGBoost 2.0.
-
-Two came from library versions moving underneath the code, and both were caught
-by tests rather than by reading: `DataFrame.stack()` stopped dropping NaN in
-pandas 3.0, which let the masked half of the correlation matrix through, and
-text columns stopped having dtype `object`, which made a validation check skip
-every column it was supposed to inspect.
-
-## Tests
+```
+src/health_analytics/
+  schema.py       decide what each column is — everything defers to this
+  datasets.py     read CSV or Excel behind one interface
+  imputation.py   KNN for numbers, mode for labels, fallbacks for both
+  profiling.py    text summary of an unfamiliar table
+  eda.py          exploratory figures
+  correlation.py  pairwise relationships, ranked
+  importance.py   train a model, rank features three ways
+  validation.py   check an imputed file for defects
+  cli.py          six subcommands
+```
 
 ```bash
-pytest          # 96 tests
+pytest              # 96 tests, all synthetic fixtures
 ruff check src tests
 ```
 
-Every fixture is synthetic. No test reads the real data, because the tests have
-to run for anyone who clones this.
-
-They are mostly behavioural rather than mechanical. Imputation is checked for
-the properties that actually matter — that observed values are never overwritten,
-that row order survives, that an integer column does not come back as
-`3.0000000004`, and that standardisation stops a column measured in tens of
-thousands from dominating the neighbour distance. Task inference is checked at
-the boundary where a small-integer target stops being a class and becomes a
-quantity.
-
 ## Known limits
 
-- **Imputation is fit on the full dataset**, including rows that later land in a
-  test split. For a pipeline whose output is an analysis file this is fine; if
-  the imputed data fed a model whose generalisation error mattered, the imputer
-  would need to be fit on the training split alone.
-- **KNN imputation is O(n²) in rows.** It is comfortable at 100k rows on 45
-  numeric columns but will not stay that way. Chunking or an approximate
-  neighbour index is the next step.
-- **Nothing is parallelised across stages**, and the stages are independent
-  enough that they could be.
-- **`--skip` is the only handling for a column that is 72% empty.** Deciding
-  whether such a column should be imputed at all, dropped, or replaced by a
-  missingness indicator is a modelling question the pipeline does not answer.
+- Imputation is fit on the full dataset. Fine for producing an analysis file; if
+  the output fed a model whose generalisation error mattered, the imputer would
+  need to be fit on the training split alone.
+- KNN imputation is O(n²) in rows — comfortable at 100k, not beyond.
+- `--skip` is the only handling for a column that is 72% empty. Whether it
+  should be imputed, dropped, or replaced by a missingness indicator is a
+  modelling question this does not answer.
