@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "health-analytics"
+version = "1.0.0"
+description = "Imputation, exploratory analysis, and feature-importance pipeline for clinical encounter data"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Dao Bui" }]
+keywords = ["healthcare", "imputation", "eda", "feature-importance", "xgboost"]
+
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "xgboost>=2.0",
+    "matplotlib>=3.7",
+    "seaborn>=0.13",
+    "openpyxl>=3.1",       # Excel reader/writer backend for pandas
+]
+
+[project.optional-dependencies]
+# SHAP depends on numba, which pins tightly against NumPy and is a common
+# source of install conflicts. The importance stage detects its absence and
+# reports the other two rankings instead of failing.
+shap = ["shap>=0.44"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
+
+[project.scripts]
+health-analytics = "health_analytics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+    "B008",  # function calls in argparse defaults are intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Capital X for a feature matrix and lowercase y for a target vector is the
+# universal convention in scikit-learn and every ML text. Renaming them to
+# satisfy PEP 8 would make the code harder to read, not easier.
+"src/health_analytics/importance.py" = ["N803", "N806"]

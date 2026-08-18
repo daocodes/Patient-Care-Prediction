@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# Patient data. Nothing in this section may ever be committed.
+#
+# The source data is confidential patient information. These rules are written
+# as broad extension patterns rather than a list of known filenames so that a
+# newly created export is ignored by default instead of needing to be added
+# here first. Verify with `git status` before every commit.
+# ---------------------------------------------------------------------------
+*.csv
+*.xlsx
+*.xls
+*.xlsm
+*.parquet
+*.dta
+*.sav
+*.db
+*.sqlite3
+# Excel lock files, created while a workbook is open
+~$*
+data/*
+!data/README.md
+
+# Derived outputs. Figures and tables are computed from patient records, and
+# some (per-patient projections, row-level diagnostics) are identifying enough
+# to be treated the same way as the source.
+output/
+eda_output/
+correlation_output/
+xgb_feature_output/
+xgb_feature_output_csv/
+*.png
+*.pdf
+*.svg
+*output*.txt
+profile.txt
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# ---------------------------------------------------------------------------
+# Editors and operating systems
+# ---------------------------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.claude/settings.local.json
