@@ -2,6 +2,10 @@
 
 A pipeline for taking messy patient data and turning it into insights through a predictive model. The model predicts if it is in the best interest for a patient to get surgery based on factors like salary, BMI, pre-existing conditions, and other important details.
 
+The analysis this came out of placed **2nd at the International Big Data Health
+Science Competition**, in the graduate division — I competed as an
+undergraduate.
+
 
 ## About the data
 
