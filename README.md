@@ -6,6 +6,21 @@ The analysis this came out of placed **2nd at the International Big Data Health
 Science Competition**, in the graduate division — I competed as an
 undergraduate.
 
+## Technologies
+
+| Tool | Used for |
+|---|---|
+| **Python 3.10+** | Developed on 3.13 |
+| **pandas** | Data frames, CSV and Excel I/O, correlation matrices |
+| **NumPy** | Vectorised masking, sampling, and the triangular-matrix operations behind pair ranking |
+| **scikit-learn** | `KNNImputer` and `SimpleImputer` for missing values, `StandardScaler` before distance-based steps, `OrdinalEncoder` and `LabelEncoder` for categoricals, PCA and t-SNE for structure, permutation importance, train/test splitting, and evaluation metrics |
+| **XGBoost** | Gradient-boosted trees for the prediction model, plus built-in gain importance |
+| **SHAP** | Per-prediction feature attribution (optional extra; it depends on numba, which pins hard against NumPy) |
+| **matplotlib + seaborn** | Heatmaps, distributions, cluster maps, and projection plots |
+| **openpyxl** | Excel reader/writer backend for pandas |
+| **pytest** | 96 tests over synthetic fixtures |
+| **ruff** | Linting and import ordering |
+| **setuptools** | Packaging and the `health-analytics` console entry point |
 
 ## About the data
 
