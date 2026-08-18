@@ -45,45 +45,12 @@ and what is effectively constant:
 Dataset: 5,000 rows x 43 columns
 Schema:  34 numeric, 9 categorical, 1 identifier, 5 outcome
 
-MISSING VALUES (35 columns affected)
-  X60_sparse            72.42%
-  X24_oxygen_sat         4.28%
-  X23_temperature        4.18%
-
-STRONGEST CORRELATIONS
-  Y2                 X_signal            -0.980
-  X30                X31                 +0.966
-  Y1                 X_signal            +0.965
-
-SKEWNESS (|skew| >= 1.0, consider a transform)
-  X40_skewed              +4.88
-
-CATEGORICAL DOMINANCE (one value covers >= 90%)
-  X56_reminder         'email'   94.1%
 ```
 
 `importance` trains a model on one outcome and ranks the features three ways:
 
 ```
-Target: Y2
-regression | train=4,000 test=1,000
-  rmse=0.0680  mae=0.0538  r2=0.9514
 
-Top 5 features:
-                  gain  permutation
-feature
-X_signal      1.341694     1.905281
-X30           0.006859     0.000351
-X60_sparse    0.005850     0.000342
-T             0.001734     0.000300
-X3            0.003956     0.000266
-```
-
-The planted driver comes out on top under both methods, and the gap to second
-place is three orders of magnitude. Pointing the same command at `Y5` — which
-the generator fills with random integers — gives 31% accuracy across three
-classes, which is chance. That is the intended answer, and it is worth more
-than a number that looks good.
 
 ## How it is put together
 
@@ -100,70 +67,6 @@ Six modules, each doing one thing, with the sequencing kept out of them.
 | `importance.py` | Train a model, rank features three ways. |
 | `validation.py` | Check an imputed file for the ways imputation goes wrong. |
 
-Three decisions are load-bearing:
-
-**Column typing lives in exactly one place.** It was duplicated four times and
-the copies disagreed, which is the bug that motivated the rewrite. A column now
-counts as numeric when at least 90% of its non-null values parse as numbers,
-because real clinical exports put `pending` and `<90` in fields that are
-otherwise numeric, and an all-or-nothing test demotes those columns to
-90,000-category strings.
-
-**Configuration is frozen dataclasses, not module globals.** Every stage takes
-its settings as an argument. That is what makes the stages testable without
-touching a file, and it is why the CLI can expose `--neighbors` and
-`--numeric-threshold` without any stage knowing the CLI exists.
-
-**Estimators sit behind a common interface.** Gain, permutation, and SHAP each
-answer "which features matter" and each is wrong in its own direction — gain
-favours high-cardinality columns, permutation splits credit unpredictably
-between correlated features, SHAP is slow and has a fragile dependency chain.
-They return the same shape, so the three rankings join into one table and can be
-compared. A feature that ranks highly under all three is a real signal; one that
-ranks highly only under gain usually is not.
-
-SHAP is an optional extra for a practical reason: it depends on numba, which
-pins hard against NumPy. It does not import in my current environment, and the
-importance stage reports the other two rankings rather than failing.
-
-## What the rewrite fixed
-
-Consolidating the scripts turned up real bugs, not just style problems.
-
-**Gain importance was silently reporting zero for every feature.** XGBoost's
-booster only keeps feature names in some configurations; trained through the
-scikit-learn wrapper on a DataFrame it does not, and `get_score()` returns
-positional keys (`f0`, `f1`) instead. The original looked those up by column
-name, matched nothing, and defaulted to `0.0`. The committed output CSV has 51
-rows and not one non-zero gain value. Nothing raised. There are now regression
-tests covering both the name mapping and the end-to-end result.
-
-**Permutation importance was scored on data the model had never seen the shape
-of.** The model trains with NaN intact, since XGBoost learns a default branch
-direction for missing values. The original then filled NaN with `-999` before
-measuring permutation importance, so what it measured for any column with gaps
-was largely the cost of that substitution. NaN is now passed through.
-
-**The cluster map was untitled.** `plt.title()` after `sns.clustermap()` targets
-whatever axes happen to be current, which is the colour bar. Figures are now
-written through a context manager that owns the figure it saves and closes it on
-the way out, including when the plotting code raises.
-
-**The t-SNE sample was unseeded**, so the projection changed on every run.
-
-**Pair deduplication was O(n²) in Python.** The original built a sorted tuple
-per row with `DataFrame.apply` to drop mirrored pairs — about 4,900 calls for 70
-columns. A NumPy triangular mask does it in one operation.
-
-Smaller ones: an `IndexError` waiting on the first fully-empty categorical
-column, bare `except:` clauses swallowing everything including `KeyboardInterrupt`,
-and `use_label_encoder=False`, which was removed in XGBoost 2.0.
-
-Two came from library versions moving underneath the code, and both were caught
-by tests rather than by reading: `DataFrame.stack()` stopped dropping NaN in
-pandas 3.0, which let the masked half of the correlation matrix through, and
-text columns stopped having dtype `object`, which made a validation check skip
-every column it was supposed to inspect.
 
 ## Tests
 
@@ -171,17 +74,6 @@ every column it was supposed to inspect.
 pytest          # 96 tests
 ruff check src tests
 ```
-
-Every fixture is synthetic. No test reads the real data, because the tests have
-to run for anyone who clones this.
-
-They are mostly behavioural rather than mechanical. Imputation is checked for
-the properties that actually matter — that observed values are never overwritten,
-that row order survives, that an integer column does not come back as
-`3.0000000004`, and that standardisation stops a column measured in tens of
-thousands from dominating the neighbour distance. Task inference is checked at
-the boundary where a small-integer target stops being a class and becomes a
-quantity.
 
 ## Known limits
 
